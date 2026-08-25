@@ -250,7 +250,7 @@ Goals may include:
 - Monthly contribution target
 - Yearly contribution target
 
-The application should show progress toward these goals.
+The application should show progress toward these goals. The system must distinguish actual account balance from goal allocations and available balance.
 
 ---
 
