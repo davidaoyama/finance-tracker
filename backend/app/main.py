@@ -3,7 +3,7 @@ from sqlalchemy import text
 from app.db.database import engine
 
 app = FastAPI(
-    title="Finance API",
+    title="Finance API ",
     description="Local personal finance tracker backend",
     version="0.1.0",
 )
