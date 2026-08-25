@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from sqlalchemy import text
+from app.db.database import engine
 
 app = FastAPI(
     title="Financial Tracker API",
@@ -11,3 +13,10 @@ app = FastAPI(
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}
+
+@app.get("/api/health/db")
+def database_health_check():
+    with engine.connect() as connection:
+        connection.execute(text("SELECT 1"))
+    return {"status": "ok"}
+
