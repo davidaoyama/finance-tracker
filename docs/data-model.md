@@ -1,8 +1,12 @@
+Yes. I’d **update `data-model.md` rather than create another document**, because these are refinements to the same conceptual model.
+
+I’d add a section covering the final decisions around dates, transaction/account behavior, goals, and balance tracking. Here’s the updated document you can use to replace your current `docs/data-model.md`:
+
 # Data Model
 
 This document describes the conceptual data model for Financial Tracker.
 
-The purpose of this model is to define the major financial entities and their relationships before designing the database schema.
+The purpose of this model is to define the major financial entities, relationships, and financial rules before designing the database schema.
 
 ---
 
@@ -12,11 +16,11 @@ An Account represents a real location where the user's money is held or managed.
 
 Examples:
 
-- Checking account
-- Savings account
-- HYSA
-- Brokerage account
+- Checking
+- Savings / HYSA
+- Brokerage
 - Roth IRA
+- Credit Card
 
 An account may contain:
 
@@ -39,7 +43,7 @@ Example:
 Checking Actual Balance: $2,000
 ```
 
-#### Allocated Balance
+#### Goal Allocations
 
 Money that still physically exists in the account but has been allocated toward one or more goals.
 
@@ -85,17 +89,52 @@ INCOME
 TRANSFER
 ```
 
-Transaction amounts are stored as positive values.
+A transaction amount is stored as a positive value. The transaction type determines how the amount affects the financial model.
 
-The transaction type determines how the amount affects the financial model.
+### Common Transaction Fields
 
-Common transaction information may include:
+Every transaction has:
 
-- Amount
-- Date/time
-- Name/description
-- Memo
-- Location
+- `id`
+- `type`
+- `amount`
+- `transaction_date`
+- `created_at`
+- `name`
+- `memo`
+- `source_or_merchant`
+
+### Transaction Date vs. Created At
+
+The application distinguishes between when the financial event occurred and when it was entered into the tracker.
+
+#### `transaction_date`
+
+The date the financial activity actually occurred.
+
+Example:
+
+```text
+Target purchase
+$50
+Transaction date: August 14
+```
+
+This date is used for financial reporting and monthly totals.
+
+#### `created_at`
+
+The date and time the user entered the transaction into the tracker.
+
+Example:
+
+```text
+Created at: August 24, 8:51 PM
+```
+
+This is used to preserve input chronology and display recently entered transactions in the order they were added.
+
+Exact time of the real-world financial transaction is not required.
 
 ---
 
@@ -106,23 +145,34 @@ An Expense represents money spent by the user.
 Example:
 
 ```text
-Merchant: McDonald's
-Amount: $15
-Category: Restaurants
+Merchant: Target
+Amount: $150
+Category: Shopping
 Payment Method: Chase Sapphire Preferred
-Date: August 24
+Account: Checking
+Transaction Date: August 14
 ```
+
+An expense may contain:
+
+- Amount
+- Transaction date
+- Merchant
+- Memo
+- Payment method
+- Funding account
+- Category
+
+An expense decreases the actual balance of its associated account.
 
 Expenses contribute toward:
 
-- Monthly expenses
-- All-time expenses
+- Monthly expense totals
+- All-time expense totals
 - Category spending
 - Payment-method spending
 
-An expense decreases the actual balance of the account ultimately funding the expense.
-
-For the purposes of this application, the user is assumed to maintain sufficient funds in their funding account. Overdraft and credit-limit behavior is outside the intended scope.
+The user is assumed to spend only money available to them. Overdraft behavior and credit-limit management are outside the initial scope.
 
 ---
 
@@ -130,23 +180,26 @@ For the purposes of this application, the user is assumed to maintain sufficient
 
 Income represents money received by the user from an external source.
 
-Examples:
-
-- Paycheck
-- Refund
-- Reimbursement
-
-Income includes a destination account.
-
 Example:
 
 ```text
 Source: Employer
 Amount: $2,000
-Destination: Checking
+Destination Account: Checking
+Transaction Date: August 23
 ```
 
-The destination account's actual balance increases by the income amount.
+Income may contain:
+
+- Amount
+- Transaction date
+- Source
+- Memo
+- Destination account
+
+Income increases the actual balance of the destination account.
+
+A payment method is not required for income.
 
 ---
 
@@ -163,6 +216,15 @@ Checking
    ↓
 SoFi HYSA
 ```
+
+A transfer contains:
+
+- Amount
+- Transaction date
+- Source account
+- Destination account
+- Name
+- Memo
 
 A transfer:
 
@@ -189,6 +251,44 @@ Checking:     $1,500
 HYSA:         $3,500
 Total:        $5,000
 ```
+
+---
+
+## Account and Payment Method
+
+For expenses, the application distinguishes between the payment method and the account that ultimately funds the expense.
+
+Example:
+
+```text
+Expense: $150 McDonald's
+Payment Method: Chase Sapphire Preferred
+Account: Checking
+```
+
+The payment method describes how the purchase was made.
+
+The account describes the user's tracked source of funds.
+
+This allows the application to separately track:
+
+- Total spending from a payment method
+- Spending by category on a payment method
+- The account whose tracked balance should decrease
+
+For the initial product, credit card balances do not need to be modeled.
+
+Example:
+
+```text
+Chase Sapphire Preferred
+Payment method for transaction
+        ↓
+Checking
+Tracked funding account
+```
+
+The application assumes the user ultimately pays the credit card from Checking and wants the expense reflected against available Checking funds immediately.
 
 ---
 
@@ -235,31 +335,19 @@ Examples:
 - Debit card
 - Cash
 
-For credit cards, the primary purpose of Payment Method is to track:
+Payment methods are primarily used for spending analysis and future credit-card reward calculations.
 
-- Spending by card
-- Spending category
-- Future credit-card reward calculations
+A payment method may have reward rules added later.
 
-The application does not initially attempt to maintain accurate credit-card balances.
-
-### Funding Account
-
-A payment method may ultimately be associated with an account used to fund it.
-
-For example:
+Example:
 
 ```text
+Payment Method:
 Chase Sapphire Preferred
-        ↓
-Paid from
-        ↓
-Checking
+
+Restaurant multiplier:
+3x
 ```
-
-For the initial product, the user's checking account can be treated as the underlying source of funds for credit-card spending.
-
-More detailed credit-card accounting is outside the initial scope.
 
 ---
 
@@ -272,7 +360,7 @@ A goal has:
 - Name
 - Target amount
 - Current allocated amount
-- Optional associated account
+- Optional linked account
 - Optional target period
 
 Examples:
@@ -280,7 +368,7 @@ Examples:
 ```text
 Xbox
 Target: $500
-Account: None
+Linked Account: None
 ```
 
 or:
@@ -288,10 +376,14 @@ or:
 ```text
 HYSA Savings
 Target: $5,000
-Account: SoFi HYSA
+Linked Account: SoFi HYSA
 ```
 
-A goal does not necessarily represent money physically moving between accounts.
+A goal is a planning abstraction. It does not necessarily represent money physically moving between accounts.
+
+A goal can have multiple contributions.
+
+A goal may have **zero or one linked account**.
 
 ---
 
@@ -299,60 +391,131 @@ A goal does not necessarily represent money physically moving between accounts.
 
 A Goal Contribution represents money being allocated toward a goal.
 
-This is different from a financial transaction.
+A goal contribution is distinct from a financial transaction.
 
 Example:
 
 ```text
-Paycheck received:
-
+Income:
 +$2,000 → Checking
 
-Then:
-
-$500 allocated → Xbox Goal
+Goal allocation:
+$500 → Xbox Goal
 ```
 
-The goal contribution does not decrease the actual Checking balance.
+The contribution does not reduce the actual Checking balance.
 
-Instead:
+After the allocation:
 
 ```text
 Checking Actual Balance:       $2,000
-Xbox Allocation:                 $500
+Xbox Goal Allocation:            $500
 Checking Available Balance:    $1,500
 ```
 
-A goal can have many Goal Contributions.
-
-Goal progress can therefore be calculated from its contributions.
+A goal can have many contributions.
 
 ---
 
-## Account-Linked Goals
+## Virtual vs. Real Goal Contributions
 
-A goal may optionally reference an Account.
+A goal contribution may remain a virtual allocation or become a real transfer.
 
-For example:
+### Virtual Goal Contribution
+
+Example:
+
+```text
+Goal: Xbox
+Contribution: $500
+Linked Account: None
+```
+
+The application records that $500 has been allocated toward the goal.
+
+No account balance changes.
+
+This allows the user to decide later whether they actually want to spend the money.
+
+### Real Goal Contribution
+
+A goal can optionally be linked to an account.
+
+Example:
 
 ```text
 Goal:
 Save $5,000 in SoFi HYSA
+
+Linked Account:
+SoFi HYSA
 ```
 
-Money can physically move through a Transfer:
+If the user chooses to make a $500 contribution real, the application creates a transfer:
 
 ```text
-Checking → SoFi HYSA
+Checking -$500
+SoFi HYSA +$500
 ```
 
-while that movement also contributes toward the associated goal.
+The contribution therefore represents both:
 
-This allows the application to distinguish between:
+- Progress toward the goal
+- A real movement of money
 
-- Moving money
-- Allocating money
-- Measuring progress toward a goal
+The user explicitly chooses whether to make a contribution a real transfer.
+
+---
+
+## Goal Completion Does Not Necessarily Mean Spending
+
+A goal can be completed without the money being spent.
+
+Example:
+
+```text
+Goal: Xbox
+Target: $500
+Allocated: $500
+```
+
+The goal is complete even if the user ultimately decides not to purchase an Xbox.
+
+If the user later purchases the Xbox, that purchase is recorded as a separate Expense.
+
+This preserves the distinction between:
+
+- Planning to spend money
+- Actually spending money
+
+---
+
+## Account Balance History
+
+Accounts maintain a current tracked balance.
+
+The application also maintains balance history so the dashboard can visualize changes over time without recalculating historical balances every time.
+
+Conceptually:
+
+```text
+Checking
+
+Current Balance:
+$5,240
+
+Balance History:
+Aug 1     $4,800
+Aug 8     $5,100
+Aug 15    $4,900
+Aug 24    $5,240
+```
+
+An account may also have a starting balance when initially created.
+
+The user may manually adjust a tracked balance when the application's balance differs from the user's actual financial records.
+
+Balance correction behavior will be defined during database and API design.
 
 ---
 
@@ -369,12 +532,9 @@ Account
   │       ├── Income
   │       └── Transfer
   │
+  ├──── Balance History
+  │
   └──── Goal Allocations
-            │
-            ▼
-           Goal
-            │
-            └── Goal Contributions
 
 
 Expense
@@ -388,19 +548,29 @@ Transfer
 
 
 Goal
-  └── Optional Associated Account
+  ├── Goal Contributions
+  │
+  └── Optional Linked Account
+
+
+Goal Contribution
+  └── Optional resulting Transfer
 ```
 
 ### Relationship Summary
 
 - An Account can participate in many Transactions.
+- An Account can have many balance-history records.
 - An Expense has a Category.
 - An Expense has a Payment Method.
-- Income has a destination Account.
-- A Transfer has a source Account and destination Account.
+- An Expense has a Funding Account.
+- Income has a Destination Account.
+- A Transfer has a Source Account and Destination Account.
+- A Transfer has a Destination Account.
 - A Goal can have many Goal Contributions.
-- A Goal may optionally be associated with an Account.
-- A Goal Contribution may allocate money currently held within an Account.
+- A Goal has zero or one linked Account.
+- A Goal Contribution belongs to one Goal.
+- A Goal Contribution may optionally result in a real Transfer.
 
 ---
 
@@ -416,9 +586,9 @@ Total before transfer = Total after transfer
 
 ### Goal Allocations Do Not Move Money
 
-Allocating $500 toward a goal does not reduce the Actual Balance of the account.
+A virtual goal allocation does not reduce an account's Actual Balance.
 
-### Available Money Accounts for Allocations
+### Available Balance Accounts for Allocations
 
 ```text
 Available Balance =
@@ -427,7 +597,7 @@ Actual Balance - Active Goal Allocations
 
 ### Expenses Reduce Actual Money
 
-Expenses reduce the Actual Balance of their funding account.
+An expense reduces the Actual Balance of its funding account.
 
 ### Income Increases Actual Money
 
@@ -437,7 +607,7 @@ Income increases the Actual Balance of its destination account.
 
 Transactions describe actual financial activity.
 
-Goal Contributions describe how existing money is mentally/planning-wise allocated.
+Goal Contributions describe planning/allocation activity.
 
 Keeping these concepts separate is a core part of the application's financial model.
 
@@ -449,9 +619,12 @@ For the initial version:
 
 - Users manually enter financial data.
 - The application does not synchronize with banks.
-- Account balances represent the user's own tracked balances.
+- Account balances represent the user's tracked view of their finances.
+- Users are assumed not to spend beyond available real-world funds.
 - Credit-card balances do not need to be tracked.
 - Credit limits do not need to be modeled.
 - Overdraft behavior does not need to be modeled.
 - Investment holdings and individual securities do not need to be tracked.
 - Goals represent allocations rather than separate stores of money.
+- Exact real-world transaction times do not need to be stored.
+- Transaction input time must be stored.
